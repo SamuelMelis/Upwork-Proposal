@@ -2,23 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import useTelegram from '../hooks/useTelegram';
-import '../components/SettingsPanel.css'; // Reusing styles for now, might need adjustment
+import '../components/SettingsPanel.css'; // Reusing styles
 
 const SettingsPage = () => {
     const navigate = useNavigate();
     const { isTelegram, showBackButton, hideBackButton, hapticFeedback } = useTelegram();
 
     // Supabase State
-    const [categories, setCategories] = useState([]);
-    const [proposals, setProposals] = useState([]);
     const [portfolio, setPortfolio] = useState([]);
+    const [personalContext, setPersonalContext] = useState(null);
+    const [proposalRules, setProposalRules] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
     // Local Form State
-    const [newCategory, setNewCategory] = useState({ name: '', description: '' });
-    const [newProposal, setNewProposal] = useState({ title: '', content: '', category_id: '' });
-    const [newPortfolio, setNewPortfolio] = useState({ title: '', link: '', description: '', category_id: '' });
+    const [newPortfolio, setNewPortfolio] = useState({ title: '', link: '', description: '' });
+    const [contextContent, setContextContent] = useState('');
+    const [rulesContent, setRulesContent] = useState('');
 
     // Show Telegram back button when on settings page
     useEffect(() => {
@@ -46,18 +46,26 @@ const SettingsPage = () => {
         setError(null);
         try {
             console.log("Fetching data from Supabase...");
-            const { data: cats, error: catError } = await supabase.from('categories').select('*').order('created_at', { ascending: true });
-            if (catError) throw catError;
-
-            const { data: props, error: propError } = await supabase.from('proposals').select('*').order('created_at', { ascending: true });
-            if (propError) throw propError;
 
             const { data: ports, error: portError } = await supabase.from('portfolio_items').select('*').order('created_at', { ascending: true });
             if (portError) throw portError;
 
-            setCategories(cats || []);
-            setProposals(props || []);
+            const { data: context, error: contextError } = await supabase.from('personal_context').select('*').limit(1).single();
+            if (contextError && contextError.code !== 'PGRST116') {
+                console.warn('Error fetching context:', contextError);
+            }
+
+            const { data: rules, error: rulesError } = await supabase.from('proposal_rules').select('*').limit(1).single();
+            if (rulesError && rulesError.code !== 'PGRST116') {
+                console.warn('Error fetching rules:', rulesError);
+            }
+
             setPortfolio(ports || []);
+            setPersonalContext(context || null);
+            setContextContent(context?.content || '');
+            setProposalRules(rules || null);
+            setRulesContent(rules?.content || '');
+
         } catch (err) {
             console.error('Error fetching data:', err);
             setError(err.message);
@@ -67,101 +75,109 @@ const SettingsPage = () => {
     };
 
     // Handlers
-    const addCategory = async () => {
-        if (!newCategory.name.trim()) return;
-        try {
-            const { data, error } = await supabase
-                .from('categories')
-                .insert([{ name: newCategory.name.trim(), description: newCategory.description }])
-                .select();
-
-            if (error) throw error;
-            if (data) {
-                setCategories([...categories, data[0]]);
-                setNewCategory({ name: '', description: '' });
-            }
-        } catch (err) {
-            alert('Error adding category: ' + err.message);
-        }
-    };
-
-    const removeCategory = async (id) => {
-        if (!window.confirm("Delete this category? This will also delete linked proposals and portfolio items.")) return;
-        try {
-            const { error } = await supabase.from('categories').delete().eq('id', id);
-            if (error) throw error;
-            setCategories(categories.filter(c => c.id !== id));
-            setProposals(proposals.filter(p => p.category_id !== id));
-            setPortfolio(portfolio.filter(p => p.category_id !== id));
-        } catch (err) {
-            alert('Error deleting category: ' + err.message);
-        }
-    };
-
-    const addProposal = async () => {
-        if (!newProposal.title.trim() || !newProposal.content.trim()) return;
-        if (!newProposal.category_id) {
-            alert("Please select a category.");
+    const saveContext = async () => {
+        if (!contextContent.trim()) {
+            alert('Please enter some context about yourself.');
             return;
         }
-        try {
-            const { data, error } = await supabase
-                .from('proposals')
-                .insert([{
-                    title: newProposal.title,
-                    content: newProposal.content,
-                    category_id: newProposal.category_id
-                }])
-                .select();
 
-            if (error) throw error;
-            if (data) {
-                setProposals([...proposals, data[0]]);
-                setNewProposal({ title: '', content: '', category_id: '' });
+        try {
+            if (personalContext) {
+                const { data, error } = await supabase
+                    .from('personal_context')
+                    .update({ content: contextContent, updated_at: new Date().toISOString() })
+                    .eq('id', personalContext.id)
+                    .select();
+
+                if (error) throw error;
+                if (data) {
+                    setPersonalContext(data[0]);
+                    alert('Context updated successfully!');
+                }
+            } else {
+                const { data, error } = await supabase
+                    .from('personal_context')
+                    .insert([{ content: contextContent }])
+                    .select();
+
+                if (error) throw error;
+                if (data) {
+                    setPersonalContext(data[0]);
+                    alert('Context saved successfully!');
+                }
             }
         } catch (err) {
-            alert('Error adding proposal: ' + err.message);
+            console.error('Error saving context:', err);
+            alert('Error saving context: ' + err.message);
         }
     };
 
-    const removeProposal = async (id) => {
+    const saveRules = async () => {
+        if (!rulesContent.trim()) {
+            alert('Please enter proposal rules.');
+            return;
+        }
+
         try {
-            const { error } = await supabase.from('proposals').delete().eq('id', id);
-            if (error) throw error;
-            setProposals(proposals.filter(p => p.id !== id));
+            if (proposalRules) {
+                const { data, error } = await supabase
+                    .from('proposal_rules')
+                    .update({ content: rulesContent, updated_at: new Date().toISOString() })
+                    .eq('id', proposalRules.id)
+                    .select();
+
+                if (error) throw error;
+                if (data) {
+                    setProposalRules(data[0]);
+                    alert('Proposal rules updated successfully!');
+                }
+            } else {
+                const { data, error } = await supabase
+                    .from('proposal_rules')
+                    .insert([{ content: rulesContent }])
+                    .select();
+
+                if (error) throw error;
+                if (data) {
+                    setProposalRules(data[0]);
+                    alert('Proposal rules saved successfully!');
+                }
+            }
         } catch (err) {
-            console.error('Error deleting proposal:', err);
+            console.error('Error saving rules:', err);
+            alert('Error saving rules: ' + err.message);
         }
     };
 
     const addPortfolio = async () => {
-        if (!newPortfolio.title.trim() || !newPortfolio.link.trim()) return;
-        if (!newPortfolio.category_id) {
-            alert("Please select a category.");
+        if (!newPortfolio.title.trim() || !newPortfolio.link.trim() || !newPortfolio.description.trim()) {
+            alert("Please fill in all portfolio fields.");
             return;
         }
+
         try {
             const { data, error } = await supabase
                 .from('portfolio_items')
                 .insert([{
                     title: newPortfolio.title,
                     link: newPortfolio.link,
-                    description: newPortfolio.description,
-                    category_id: newPortfolio.category_id
+                    description: newPortfolio.description
                 }])
                 .select();
 
             if (error) throw error;
             if (data) {
                 setPortfolio([...portfolio, data[0]]);
-                setNewPortfolio({ title: '', link: '', description: '', category_id: '' });
+                setNewPortfolio({ title: '', link: '', description: '' });
             }
         } catch (err) {
+            console.error('Error adding portfolio:', err);
             alert('Error adding portfolio: ' + err.message);
         }
     };
 
     const removePortfolio = async (id) => {
+        if (!window.confirm("Delete this portfolio item?")) return;
         try {
             const { error } = await supabase.from('portfolio_items').delete().eq('id', id);
             if (error) throw error;
@@ -169,11 +185,6 @@ const SettingsPage = () => {
         } catch (err) {
             console.error('Error deleting portfolio:', err);
         }
-    };
-
-    const getCategoryName = (id) => {
-        const cat = categories.find(c => c.id === id);
-        return cat ? cat.name : 'Unknown Category';
     };
 
     return (
@@ -192,93 +203,53 @@ const SettingsPage = () => {
                 {loading && <p className="loading-text">Loading data from Supabase...</p>}
                 {error && <p className="error-text" style={{ color: '#ef4444' }}>Error: {error}</p>}
 
-                {/* Categories Section */}
+                {/* Personal Context Section */}
                 <div className="settings-section">
-                    <h3>Job Categories</h3>
+                    <h3>Personal Context</h3>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                        Your professional background, skills, and experience. The AI uses this to personalize proposals.
+                    </p>
                     <div className="add-form column">
-                        <input
-                            type="text"
-                            placeholder="Category Name (e.g. Video Editing)"
-                            value={newCategory.name}
-                            onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
-                            className="settings-input"
-                        />
                         <textarea
-                            placeholder="Description / Keywords..."
-                            value={newCategory.description}
-                            onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
-                            className="settings-input textarea-small"
+                            placeholder="Example: I'm a professional video editor with 5+ years of experience..."
+                            value={contextContent}
+                            onChange={(e) => setContextContent(e.target.value)}
+                            className="settings-input textarea-large"
+                            rows={8}
                         />
-                        <button className="btn-small" onClick={addCategory} disabled={loading}>Add Category</button>
+                        <button className="btn-small" onClick={saveContext} disabled={loading}>
+                            {personalContext ? 'Update Context' : 'Save Context'}
+                        </button>
                     </div>
-                    <ul className="items-list">
-                        {categories.map((cat) => (
-                            <li key={cat.id} className="list-item column">
-                                <div className="item-header">
-                                    <strong>{cat.name}</strong>
-                                    <button className="delete-btn" onClick={() => removeCategory(cat.id)}>×</button>
-                                </div>
-                                {cat.description && <p className="item-preview">{cat.description}</p>}
-                            </li>
-                        ))}
-                        {!loading && categories.length === 0 && <p className="empty-text">No categories found.</p>}
-                    </ul>
                 </div>
 
-                {/* Winning Proposals Section */}
+                {/* Proposal Rules Section */}
                 <div className="settings-section">
-                    <h3>Winning Proposals</h3>
+                    <h3>Proposal Writing Rules</h3>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                        Guidelines for how proposals should be structured and formatted.
+                    </p>
                     <div className="add-form column">
-                        <select
-                            className="settings-input"
-                            value={newProposal.category_id}
-                            onChange={(e) => setNewProposal({ ...newProposal, category_id: e.target.value })}
-                        >
-                            <option value="">Select Category...</option>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <input
-                            type="text"
-                            placeholder="Proposal Title"
-                            value={newProposal.title}
-                            onChange={(e) => setNewProposal({ ...newProposal, title: e.target.value })}
-                            className="settings-input"
-                        />
                         <textarea
-                            placeholder="Proposal Content..."
-                            value={newProposal.content}
-                            onChange={(e) => setNewProposal({ ...newProposal, content: e.target.value })}
-                            className="settings-input textarea-small"
+                            placeholder="Example: Keep it human & casual, 3-5 paragraphs max, include portfolio links..."
+                            value={rulesContent}
+                            onChange={(e) => setRulesContent(e.target.value)}
+                            className="settings-input textarea-large"
+                            rows={10}
                         />
-                        <button className="btn-small" onClick={addProposal} disabled={loading}>Add Proposal</button>
+                        <button className="btn-small" onClick={saveRules} disabled={loading}>
+                            {proposalRules ? 'Update Rules' : 'Save Rules'}
+                        </button>
                     </div>
-                    <ul className="items-list">
-                        {proposals.map((prop) => (
-                            <li key={prop.id} className="list-item column">
-                                <div className="item-header">
-                                    <strong>{prop.title}</strong>
-                                    <button className="delete-btn" onClick={() => removeProposal(prop.id)}>×</button>
-                                </div>
-                                <span className="category-badge">{getCategoryName(prop.category_id)}</span>
-                                <p className="item-preview">{prop.content.substring(0, 50)}...</p>
-                            </li>
-                        ))}
-                        {!loading && proposals.length === 0 && <p className="empty-text">No proposals found.</p>}
-                    </ul>
                 </div>
 
                 {/* Portfolio Section */}
                 <div className="settings-section">
-                    <h3>Portfolio Links</h3>
+                    <h3>Portfolio Items</h3>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                        AI will automatically select the most relevant portfolio items for each job.
+                    </p>
                     <div className="add-form column">
-                        <select
-                            className="settings-input"
-                            value={newPortfolio.category_id}
-                            onChange={(e) => setNewPortfolio({ ...newPortfolio, category_id: e.target.value })}
-                        >
-                            <option value="">Select Category...</option>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
                         <input
                             type="text"
                             placeholder="Project Title"
@@ -294,7 +265,7 @@ const SettingsPage = () => {
                             className="settings-input"
                         />
                         <textarea
-                            placeholder="Description (keywords)..."
+                            placeholder="Description (what skills/tools/platforms this demonstrates)"
                             value={newPortfolio.description}
                             onChange={(e) => setNewPortfolio({ ...newPortfolio, description: e.target.value })}
                             className="settings-input textarea-small"
@@ -308,8 +279,8 @@ const SettingsPage = () => {
                                     <strong>{item.title}</strong>
                                     <button className="delete-btn" onClick={() => removePortfolio(item.id)}>×</button>
                                 </div>
-                                <span className="category-badge">{getCategoryName(item.category_id)}</span>
                                 <a href={item.link} target="_blank" rel="noopener noreferrer" className="item-link">{item.link}</a>
+                                <p className="item-preview">{item.description}</p>
                             </li>
                         ))}
                         {!loading && portfolio.length === 0 && <p className="empty-text">No portfolio items found.</p>}
