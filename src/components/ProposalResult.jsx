@@ -34,7 +34,7 @@ const ProposalResult = ({ proposal }) => {
 
     // Handle both old format (string) and new format (object with text + metadata)
     const proposalText = typeof currentProposal === 'string' ? currentProposal : currentProposal.text;
-    const metadata = currentProposal.metadata;
+    const portfolioUsed = currentProposal?.portfolioUsed || 0;
 
     return (
         <div className="proposal-result-container glass-panel fade-in">
@@ -45,7 +45,7 @@ const ProposalResult = ({ proposal }) => {
                 </button>
             </div>
 
-            {metadata && (
+            {portfolioUsed > 0 && (
                 <div className="proposal-metadata" style={{
                     padding: '0.75rem',
                     marginBottom: '1rem',
@@ -54,9 +54,7 @@ const ProposalResult = ({ proposal }) => {
                     fontSize: '0.875rem',
                     color: 'var(--text-secondary)'
                 }}>
-                    <strong style={{ color: 'var(--accent-color)' }}>Category:</strong> {metadata.category} |
-                    <strong style={{ color: 'var(--accent-color)', marginLeft: '1rem' }}>Proposals Used:</strong> {metadata.proposalsUsed} |
-                    <strong style={{ color: 'var(--accent-color)', marginLeft: '1rem' }}>Portfolio Items:</strong> {metadata.portfolioUsed}
+                    <strong style={{ color: 'var(--accent-color)' }}>Portfolio Items Selected:</strong> {portfolioUsed}
                 </div>
             )}
 

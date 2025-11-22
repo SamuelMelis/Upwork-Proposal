@@ -47,77 +47,84 @@ async function callWithRetry(apiCall, maxRetries = null) {
 }
 
 /**
- * Identifies the best matching category for a job brief
+ * Selects the most relevant portfolio items based on job description
  * @param {string} jobBrief - The job description
- * @param {Array} categories - Array of category objects with id, name, description
- * @returns {Promise<string|null>} - The category ID or null
+ * @param {Array} allPortfolio - All available portfolio items
+ * @returns {Promise<Array>} - Array of 2-3 most relevant portfolio items
  */
-export async function identifyCategory(jobBrief, categories) {
-    if (!categories || categories.length === 0) {
-        console.warn('No categories available for classification');
-        return null;
+export async function selectRelevantPortfolio(jobBrief, allPortfolio) {
+    if (!allPortfolio || allPortfolio.length === 0) {
+        console.warn('No portfolio items available');
+        return [];
     }
 
-    const categoryList = categories
-        .map(cat => `- ID: ${cat.id}, Name: ${cat.name}, Description: ${cat.description || 'N/A'}`)
-        .join('\n');
+    const portfolioList = allPortfolio
+        .map((item, index) => `${index + 1}. ${item.title}\n   Description: ${item.description}\n   Link: ${item.link}`)
+        .join('\n\n');
 
-    const prompt = `You are an expert job classifier for Upwork freelance projects.
+    const prompt = `You are an expert at matching portfolio work to job requirements.
 
-Given the following job brief:
+JOB DESCRIPTION:
 """
 ${jobBrief}
 """
 
-And these available categories:
-${categoryList}
+AVAILABLE PORTFOLIO ITEMS:
+${portfolioList}
 
-Analyze the job brief and return ONLY the ID of the most relevant category. Return just the ID number, nothing else.`;
+TASK:
+Analyze the job description and select the 2-3 most relevant portfolio items that best demonstrate the skills needed for this job.
+
+Return ONLY the numbers of the selected items (e.g., "1, 3, 5"), nothing else.`;
 
     try {
-        return await callWithRetry(async () => {
+        const selectedIndices = await callWithRetry(async () => {
             const model = getModel();
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            const categoryId = response.text().trim();
+            const text = response.text().trim();
 
-            console.log('Identified category ID:', categoryId);
-            return categoryId;
+            // Parse the response to get indices
+            const indices = text.match(/\d+/g)?.map(n => parseInt(n) - 1) || [];
+            console.log('Selected portfolio indices:', indices);
+            return indices;
         });
+
+        // Return the selected portfolio items
+        const selected = selectedIndices
+            .filter(i => i >= 0 && i < allPortfolio.length)
+            .map(i => allPortfolio[i])
+            .slice(0, 3); // Max 3 items
+
+        console.log(`Selected ${selected.length} portfolio items`);
+        return selected;
     } catch (error) {
-        console.error('Error identifying category:', error);
-        throw new Error('Failed to identify job category: ' + error.message);
+        console.error('Error selecting portfolio:', error);
+        // Fallback: return first 2 items
+        return allPortfolio.slice(0, 2);
     }
 }
 
 /**
- * Generates a cover letter using the job brief and selected assets
+ * Generates a cover letter using job brief, context, rules, and selected portfolio
  * @param {string} jobBrief - The job description
- * @param {Array} winningProposals - Array of winning proposal objects
- * @param {Array} portfolioItems - Array of portfolio item objects
- * @param {string} personalContext - Personal/professional context about the user
+ * @param {Array} portfolioItems - Selected portfolio items
+ * @param {string} personalContext - Personal/professional context
+ * @param {string} proposalRules - Proposal formatting rules
  * @returns {Promise<string>} - The generated cover letter
  */
-export async function generateCoverLetter(jobBrief, winningProposals, portfolioItems, personalContext = null) {
-    const hasProposals = winningProposals && winningProposals.length > 0;
+export async function generateCoverLetter(jobBrief, portfolioItems, personalContext, proposalRules) {
     const hasPortfolio = portfolioItems && portfolioItems.length > 0;
     const hasContext = personalContext && personalContext.trim() !== '';
-
-    const proposalExamples = hasProposals
-        ? winningProposals.map(p => `Title: ${p.title}\nContent: ${p.content}`).join('\n\n')
-        : 'No winning proposals available.';
+    const hasRules = proposalRules && proposalRules.trim() !== '';
 
     const portfolioLinks = hasPortfolio
-        ? portfolioItems.map(p => `- ${p.title}: ${p.link}${p.description ? ` (${p.description})` : ''}`).join('\n')
-        : 'No portfolio items available.';
+        ? portfolioItems.map(p => `- ${p.title}: ${p.link}`).join('\n')
+        : '';
 
-    let prompt;
+    const prompt = `You are an expert Upwork proposal writer. Create a compelling cover letter for this job.
 
-    if (!hasProposals && !hasPortfolio) {
-        // Simplified prompt when no data is available
-        prompt = `You are an expert Upwork proposal writer. Your task is to create a compelling, personalized cover letter for the following job.
-
-JOB BRIEF:
+JOB DESCRIPTION:
 """
 ${jobBrief}
 """
@@ -127,52 +134,29 @@ ABOUT THE FREELANCER:
 ${personalContext}
 """
 ` : ''}
-INSTRUCTIONS:
-1. Write a professional, engaging cover letter that directly addresses the job requirements
-2. Keep it concise (150-250 words)
-3. Focus on value proposition and relevant experience
-${hasContext ? '4. Use the freelancer context to personalize the proposal and highlight relevant skills/experience' : '4. Highlight relevant skills based on the job description'}
-5. Do NOT use placeholder text or generic statements
-6. Make it feel personal and tailored to this specific job
-7. Write in first person as the freelancer applying for the job
-
-Generate the cover letter now:`;
-    } else {
-        // Full prompt with examples
-        prompt = `You are an expert Upwork proposal writer. Your task is to create a compelling, personalized cover letter for the following job.
-
-JOB BRIEF:
-"""
-${jobBrief}
-"""
-${hasContext ? `
-ABOUT THE FREELANCER:
-"""
-${personalContext}
-"""
-` : ''}
-WINNING PROPOSAL EXAMPLES (use these as style/tone reference):
-${proposalExamples}
-
-PORTFOLIO ITEMS TO REFERENCE:
+${hasPortfolio ? `
+RELEVANT PORTFOLIO ITEMS TO MENTION:
 ${portfolioLinks}
+` : ''}
+${hasRules ? `
+PROPOSAL WRITING GUIDELINES (FOLLOW THESE STRICTLY):
+"""
+${proposalRules}
+"""
+` : ''}
 
 INSTRUCTIONS:
-1. Write a professional, engaging cover letter that directly addresses the job requirements
-2. ${hasProposals ? 'Match the tone and style of the winning proposal examples' : 'Use a professional and engaging tone'}
-3. ${hasPortfolio ? 'Naturally incorporate 1-2 relevant portfolio links where appropriate' : 'Focus on relevant skills and experience'}
-4. Keep it concise (150-250 words)
-5. Focus on value proposition and relevant experience
-${hasContext ? '6. Use the freelancer context to personalize the proposal and highlight the most relevant skills/experience for this specific job' : '6. Highlight relevant skills based on available information'}
-7. Do NOT use placeholder text or generic statements
-8. Make it feel personal and tailored to this specific job
-9. Write in first person as the freelancer applying for the job
+1. Write a natural, human-sounding proposal (not AI-like or overly formal)
+2. Tailor it specifically to this job description
+3. ${hasPortfolio ? 'Include the portfolio links naturally' : 'Focus on relevant skills'}
+4. ${hasRules ? 'Follow ALL the proposal writing guidelines provided above' : 'Keep it professional and concise'}
+5. Keep it 3-5 paragraphs maximum
+6. Write in first person as the freelancer
+7. End with a friendly call to action
 
-Generate the cover letter now:`;
-    }
+Generate the proposal now:`;
 
     try {
-        console.log('Calling Gemini API to generate cover letter...');
         return await callWithRetry(async () => {
             const model = getModel();
             const result = await model.generateContent(prompt);
@@ -184,7 +168,6 @@ Generate the cover letter now:`;
         });
     } catch (error) {
         console.error('Error generating cover letter:', error);
-        console.error('Error details:', error.message, error.stack);
         throw new Error('Failed to generate cover letter: ' + error.message);
     }
 }
@@ -192,12 +175,12 @@ Generate the cover letter now:`;
 /**
  * Edits an existing proposal based on user's request
  * @param {string} currentProposal - The current proposal text
- * @param {string} userRequest - User's edit request (e.g., "make it shorter")
+ * @param {string} userRequest - User's edit request
  * @param {Array} chatHistory - Previous chat messages for context
  * @returns {Promise<string>} - The updated proposal text
  */
 export async function editProposal(currentProposal, userRequest, chatHistory = []) {
-    const prompt = `You are an expert proposal editor. Your task is to modify the following Upwork proposal based on the user's request.
+    const prompt = `You are an expert proposal editor. Modify the proposal based on the user's request.
 
 CURRENT PROPOSAL:
 """
@@ -211,11 +194,11 @@ ${userRequest}
 
 INSTRUCTIONS:
 1. Carefully read the user's request
-2. Modify the proposal accordingly while maintaining its professional quality
-3. Keep the same general structure unless the user asks to change it
+2. Modify the proposal accordingly while maintaining professional quality
+3. Keep the same structure unless asked to change it
 4. Return ONLY the updated proposal text, nothing else
-5. Do NOT add explanations, comments, or meta-text
-6. Maintain the same tone and style unless specifically asked to change it
+5. Do NOT add explanations or meta-text
+6. Maintain the tone unless specifically asked to change it
 
 Generate the updated proposal now:`;
 
@@ -236,10 +219,10 @@ Generate the updated proposal now:`;
 }
 
 /**
- * Main orchestration function that handles the entire proposal generation flow
+ * Main function that generates a complete proposal
  * @param {string} jobBrief - The job description
  * @param {Function} onStatusUpdate - Callback for status updates
- * @returns {Promise<Object>} - Object containing the generated proposal and metadata
+ * @returns {Promise<Object>} - Object containing the generated proposal
  */
 export async function generateProposal(jobBrief, onStatusUpdate) {
     try {
@@ -248,139 +231,52 @@ export async function generateProposal(jobBrief, onStatusUpdate) {
 
         // Step 1: Fetch personal context
         onStatusUpdate?.('Loading your profile...');
-        const { data: contextData, error: contextError } = await supabase
+        const { data: contextData } = await supabase
             .from('personal_context')
             .select('*')
             .limit(1)
             .single();
 
         const personalContext = contextData?.content || null;
-        if (contextError && contextError.code !== 'PGRST116') {
-            console.warn('Error fetching personal context:', contextError);
-        }
 
-        // Step 2: Fetch categories
-        onStatusUpdate?.('Analyzing job brief...');
-        const { data: categories, error: catError } = await supabase
-            .from('categories')
+        // Step 2: Fetch proposal rules
+        onStatusUpdate?.('Loading proposal guidelines...');
+        const { data: rulesData } = await supabase
+            .from('proposal_rules')
             .select('*')
-            .order('created_at', { ascending: true });
+            .limit(1)
+            .single();
 
-        if (catError) {
-            console.error('Error fetching categories:', catError);
-        }
+        const proposalRules = rulesData?.content || null;
 
-        // If no categories exist, generate a basic proposal without categorization
-        if (!categories || categories.length === 0) {
-            console.warn('No categories found. Generating proposal without categorization.');
-            onStatusUpdate?.('Generating your cover letter...');
-
-            const coverLetter = await generateCoverLetter(jobBrief, [], [], personalContext);
-
-            return {
-                coverLetter,
-                category: 'General',
-                proposalsUsed: 0,
-                portfolioUsed: 0
-            };
-        }
-
-        // Step 2: Identify category
-        onStatusUpdate?.('Identifying job category...');
-        let categoryId;
-        try {
-            categoryId = await identifyCategory(jobBrief, categories);
-        } catch (error) {
-            console.error('Error identifying category:', error);
-            // Fallback to first category if identification fails
-            categoryId = categories[0].id.toString();
-        }
-
-        if (!categoryId) {
-            // Use first category as fallback
-            categoryId = categories[0].id.toString();
-        }
-
-        const matchedCategory = categories.find(c => c.id.toString() === categoryId.toString());
-
-        if (!matchedCategory) {
-            console.warn('Category ID not found in list, using first category as fallback');
-            const fallbackCategory = categories[0];
-            onStatusUpdate?.(`Using category: ${fallbackCategory.name}`);
-
-            // Fetch proposals and portfolio for fallback category
-            const { data: proposals } = await supabase
-                .from('proposals')
-                .select('*')
-                .eq('category_id', fallbackCategory.id);
-
-            const { data: portfolio } = await supabase
-                .from('portfolio_items')
-                .select('*')
-                .eq('category_id', fallbackCategory.id);
-
-            onStatusUpdate?.('Generating your cover letter...');
-            const coverLetter = await generateCoverLetter(jobBrief, proposals || [], portfolio || [], personalContext);
-
-            return {
-                coverLetter,
-                category: fallbackCategory.name,
-                proposalsUsed: proposals?.length || 0,
-                portfolioUsed: portfolio?.length || 0
-            };
-        }
-
-        onStatusUpdate?.(`Matched category: ${matchedCategory.name}`);
-
-        // Step 3: Fetch proposals and portfolio for the identified category
-        onStatusUpdate?.('Selecting relevant proposals and portfolio...');
-        const { data: proposals, error: propError } = await supabase
-            .from('proposals')
-            .select('*')
-            .eq('category_id', categoryId);
-
-        if (propError) {
-            console.error('Error fetching proposals:', propError);
-        }
-
-        const { data: portfolio, error: portError } = await supabase
+        // Step 3: Fetch all portfolio items
+        onStatusUpdate?.('Analyzing your portfolio...');
+        const { data: allPortfolio } = await supabase
             .from('portfolio_items')
             .select('*')
-            .eq('category_id', categoryId);
+            .order('created_at', { ascending: false });
 
-        if (portError) {
-            console.error('Error fetching portfolio:', portError);
-        }
+        // Step 4: AI selects relevant portfolio items
+        onStatusUpdate?.('Selecting relevant portfolio items...');
+        const selectedPortfolio = await selectRelevantPortfolio(jobBrief, allPortfolio || []);
 
-        // Step 4: Generate cover letter (even if proposals/portfolio are empty)
-        onStatusUpdate?.('Generating your cover letter...');
-        const coverLetter = await generateCoverLetter(jobBrief, proposals || [], portfolio || [], personalContext);
+        // Step 5: Generate cover letter
+        onStatusUpdate?.('Generating your personalized proposal...');
+        const coverLetter = await generateCoverLetter(
+            jobBrief,
+            selectedPortfolio,
+            personalContext,
+            proposalRules
+        );
 
         console.log('=== Proposal generation complete ===');
         return {
             coverLetter,
-            category: matchedCategory.name,
-            proposalsUsed: proposals?.length || 0,
-            portfolioUsed: portfolio?.length || 0
+            portfolioUsed: selectedPortfolio.length
         };
 
     } catch (error) {
         console.error('Error in generateProposal:', error);
-        console.error('Error stack:', error.stack);
-
-        // Last resort: generate a basic proposal without any data
-        try {
-            onStatusUpdate?.('Generating basic cover letter...');
-            const coverLetter = await generateCoverLetter(jobBrief, [], [], null);
-            return {
-                coverLetter,
-                category: 'General',
-                proposalsUsed: 0,
-                portfolioUsed: 0
-            };
-        } catch (fallbackError) {
-            console.error('Fallback generation also failed:', fallbackError);
-            throw new Error('Failed to generate proposal. Please check your API key and try again.');
-        }
+        throw new Error('Failed to generate proposal: ' + error.message);
     }
 }
