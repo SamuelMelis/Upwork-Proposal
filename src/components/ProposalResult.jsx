@@ -1,21 +1,41 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import ChatInterface from './ChatInterface';
 import './ProposalResult.css';
 
 const ProposalResult = ({ proposal }) => {
     const [currentProposal, setCurrentProposal] = useState(null);
+    const [isSaved, setIsSaved] = useState(false);
 
     // Update local state when proposal prop changes
     useEffect(() => {
         if (proposal) {
             setCurrentProposal(proposal);
+            setIsSaved(false); // Reset save state for new proposal
         }
     }, [proposal]);
 
     const handleCopy = () => {
-        const textToCopy = currentProposal?.text || currentProposal;
+        const textToCopy = typeof currentProposal === 'string' ? currentProposal : currentProposal.text;
         navigator.clipboard.writeText(textToCopy);
-        // Could add a toast notification here
+    };
+
+    const handleSave = async () => {
+        if (isSaved) return;
+
+        const proposalText = typeof currentProposal === 'string' ? currentProposal : currentProposal.text;
+
+        try {
+            const { error } = await supabase
+                .from('saved_proposals')
+                .insert([{ content: proposalText }]);
+
+            if (error) throw error;
+            setIsSaved(true);
+        } catch (err) {
+            console.error('Error saving proposal:', err);
+            alert('Failed to save proposal');
+        }
     };
 
     const handleProposalUpdate = (updatedText) => {
@@ -28,6 +48,7 @@ const ProposalResult = ({ proposal }) => {
         } else {
             setCurrentProposal(updatedText);
         }
+        setIsSaved(false); // Reset save state if edited
     };
 
     if (!currentProposal) return null;
@@ -40,9 +61,26 @@ const ProposalResult = ({ proposal }) => {
         <div className="proposal-result-container glass-panel fade-in">
             <div className="result-header">
                 <h2 className="section-title">Generated Proposal</h2>
-                <button className="copy-btn" onClick={handleCopy}>
-                    Copy to Clipboard
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        className={`icon-btn ${isSaved ? 'saved' : ''}`}
+                        onClick={handleSave}
+                        title={isSaved ? "Saved!" : "Save Proposal"}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            fontSize: '1.5rem',
+                            cursor: 'pointer',
+                            color: isSaved ? '#fbbf24' : 'var(--text-secondary)',
+                            transition: 'transform 0.2s ease, color 0.2s ease'
+                        }}
+                    >
+                        {isSaved ? '★' : '☆'}
+                    </button>
+                    <button className="copy-btn" onClick={handleCopy}>
+                        Copy to Clipboard
+                    </button>
+                </div>
             </div>
 
             {portfolioUsed > 0 && (

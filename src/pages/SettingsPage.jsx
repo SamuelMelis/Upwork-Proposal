@@ -12,6 +12,7 @@ const SettingsPage = () => {
     const [portfolio, setPortfolio] = useState([]);
     const [personalContext, setPersonalContext] = useState(null);
     const [proposalRules, setProposalRules] = useState(null);
+    const [savedProposals, setSavedProposals] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -60,11 +61,15 @@ const SettingsPage = () => {
                 console.warn('Error fetching rules:', rulesError);
             }
 
+            const { data: saved, error: savedError } = await supabase.from('saved_proposals').select('*').order('created_at', { ascending: false });
+            if (savedError) throw savedError;
+
             setPortfolio(ports || []);
             setPersonalContext(context || null);
             setContextContent(context?.content || '');
             setProposalRules(rules || null);
             setRulesContent(rules?.content || '');
+            setSavedProposals(saved || []);
 
         } catch (err) {
             console.error('Error fetching data:', err);
@@ -187,6 +192,23 @@ const SettingsPage = () => {
         }
     };
 
+    const removeSavedProposal = async (id) => {
+        if (!window.confirm("Delete this saved proposal?")) return;
+        try {
+            const { error } = await supabase.from('saved_proposals').delete().eq('id', id);
+            if (error) throw error;
+            setSavedProposals(savedProposals.filter(p => p.id !== id));
+        } catch (err) {
+            console.error('Error deleting saved proposal:', err);
+        }
+    };
+
+    const copySavedProposal = (content) => {
+        navigator.clipboard.writeText(content);
+        if (isTelegram) hapticFeedback('light');
+        alert('Copied to clipboard!');
+    };
+
     return (
         <div className="container" style={{ maxWidth: '900px', paddingTop: '2rem' }}>
             <div className="settings-header" style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -202,6 +224,39 @@ const SettingsPage = () => {
             <div className="glass-panel">
                 {loading && <p className="loading-text">Loading data from Supabase...</p>}
                 {error && <p className="error-text" style={{ color: '#ef4444' }}>Error: {error}</p>}
+
+                {/* Saved Proposals Section */}
+                <div className="settings-section">
+                    <h3>Saved Proposals ⭐</h3>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                        Your collection of favorite generated proposals.
+                    </p>
+                    <ul className="items-list">
+                        {savedProposals.map((prop) => (
+                            <li key={prop.id} className="list-item column">
+                                <div className="item-header">
+                                    <strong style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                        {new Date(prop.created_at).toLocaleDateString()}
+                                    </strong>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            className="btn-small"
+                                            onClick={() => copySavedProposal(prop.content)}
+                                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                                        >
+                                            Copy
+                                        </button>
+                                        <button className="delete-btn" onClick={() => removeSavedProposal(prop.id)}>×</button>
+                                    </div>
+                                </div>
+                                <p className="item-preview" style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto' }}>
+                                    {prop.content}
+                                </p>
+                            </li>
+                        ))}
+                        {!loading && savedProposals.length === 0 && <p className="empty-text">No saved proposals yet.</p>}
+                    </ul>
+                </div>
 
                 {/* Personal Context Section */}
                 <div className="settings-section">
