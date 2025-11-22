@@ -10,15 +10,11 @@ const SettingsPage = () => {
 
     // Supabase State
     const [portfolio, setPortfolio] = useState([]);
-    const [personalContext, setPersonalContext] = useState(null);
-    const [proposalRules, setProposalRules] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
     // Local Form State
     const [newPortfolio, setNewPortfolio] = useState({ title: '', link: '', description: '' });
-    const [contextContent, setContextContent] = useState('');
-    const [rulesContent, setRulesContent] = useState('');
 
     // Show Telegram back button when on settings page
     useEffect(() => {
@@ -50,21 +46,7 @@ const SettingsPage = () => {
             const { data: ports, error: portError } = await supabase.from('portfolio_items').select('*').order('created_at', { ascending: true });
             if (portError) throw portError;
 
-            const { data: context, error: contextError } = await supabase.from('personal_context').select('*').limit(1).single();
-            if (contextError && contextError.code !== 'PGRST116') {
-                console.warn('Error fetching context:', contextError);
-            }
-
-            const { data: rules, error: rulesError } = await supabase.from('proposal_rules').select('*').limit(1).single();
-            if (rulesError && rulesError.code !== 'PGRST116') {
-                console.warn('Error fetching rules:', rulesError);
-            }
-
             setPortfolio(ports || []);
-            setPersonalContext(context || null);
-            setContextContent(context?.content || '');
-            setProposalRules(rules || null);
-            setRulesContent(rules?.content || '');
 
         } catch (err) {
             console.error('Error fetching data:', err);
@@ -75,80 +57,6 @@ const SettingsPage = () => {
     };
 
     // Handlers
-    const saveContext = async () => {
-        if (!contextContent.trim()) {
-            alert('Please enter some context about yourself.');
-            return;
-        }
-
-        try {
-            if (personalContext) {
-                const { data, error } = await supabase
-                    .from('personal_context')
-                    .update({ content: contextContent, updated_at: new Date().toISOString() })
-                    .eq('id', personalContext.id)
-                    .select();
-
-                if (error) throw error;
-                if (data) {
-                    setPersonalContext(data[0]);
-                    alert('Context updated successfully!');
-                }
-            } else {
-                const { data, error } = await supabase
-                    .from('personal_context')
-                    .insert([{ content: contextContent }])
-                    .select();
-
-                if (error) throw error;
-                if (data) {
-                    setPersonalContext(data[0]);
-                    alert('Context saved successfully!');
-                }
-            }
-        } catch (err) {
-            console.error('Error saving context:', err);
-            alert('Error saving context: ' + err.message);
-        }
-    };
-
-    const saveRules = async () => {
-        if (!rulesContent.trim()) {
-            alert('Please enter proposal rules.');
-            return;
-        }
-
-        try {
-            if (proposalRules) {
-                const { data, error } = await supabase
-                    .from('proposal_rules')
-                    .update({ content: rulesContent, updated_at: new Date().toISOString() })
-                    .eq('id', proposalRules.id)
-                    .select();
-
-                if (error) throw error;
-                if (data) {
-                    setProposalRules(data[0]);
-                    alert('Proposal rules updated successfully!');
-                }
-            } else {
-                const { data, error } = await supabase
-                    .from('proposal_rules')
-                    .insert([{ content: rulesContent }])
-                    .select();
-
-                if (error) throw error;
-                if (data) {
-                    setProposalRules(data[0]);
-                    alert('Proposal rules saved successfully!');
-                }
-            }
-        } catch (err) {
-            console.error('Error saving rules:', err);
-            alert('Error saving rules: ' + err.message);
-        }
-    };
-
     const addPortfolio = async () => {
         if (!newPortfolio.title.trim() || !newPortfolio.link.trim() || !newPortfolio.description.trim()) {
             alert("Please fill in all portfolio fields.");
@@ -203,48 +111,8 @@ const SettingsPage = () => {
                 {loading && <p className="loading-text">Loading data from Supabase...</p>}
                 {error && <p className="error-text" style={{ color: '#ef4444' }}>Error: {error}</p>}
 
-                {/* Personal Context Section */}
-                <div className="settings-section">
-                    <h3>Personal Context</h3>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                        Your professional background, skills, and experience. The AI uses this to personalize proposals.
-                    </p>
-                    <div className="add-form column">
-                        <textarea
-                            placeholder="Example: I'm a professional video editor with 5+ years of experience..."
-                            value={contextContent}
-                            onChange={(e) => setContextContent(e.target.value)}
-                            className="settings-input textarea-large"
-                            rows={8}
-                        />
-                        <button className="btn-small" onClick={saveContext} disabled={loading}>
-                            {personalContext ? 'Update Context' : 'Save Context'}
-                        </button>
-                    </div>
-                </div>
-
-                {/* Proposal Rules Section */}
-                <div className="settings-section">
-                    <h3>Proposal Writing Rules</h3>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                        Guidelines for how proposals should be structured and formatted.
-                    </p>
-                    <div className="add-form column">
-                        <textarea
-                            placeholder="Example: Keep it human & casual, 3-5 paragraphs max, include portfolio links..."
-                            value={rulesContent}
-                            onChange={(e) => setRulesContent(e.target.value)}
-                            className="settings-input textarea-large"
-                            rows={10}
-                        />
-                        <button className="btn-small" onClick={saveRules} disabled={loading}>
-                            {proposalRules ? 'Update Rules' : 'Save Rules'}
-                        </button>
-                    </div>
-                </div>
-
                 {/* Portfolio Section */}
-                <div className="settings-section">
+                <div className="settings-section" style={{ borderBottom: 'none' }}>
                     <h3>Portfolio Items</h3>
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                         AI will automatically select the most relevant portfolio items for each job.
