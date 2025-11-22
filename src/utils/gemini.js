@@ -190,6 +190,52 @@ Generate the cover letter now:`;
 }
 
 /**
+ * Edits an existing proposal based on user's request
+ * @param {string} currentProposal - The current proposal text
+ * @param {string} userRequest - User's edit request (e.g., "make it shorter")
+ * @param {Array} chatHistory - Previous chat messages for context
+ * @returns {Promise<string>} - The updated proposal text
+ */
+export async function editProposal(currentProposal, userRequest, chatHistory = []) {
+    const prompt = `You are an expert proposal editor. Your task is to modify the following Upwork proposal based on the user's request.
+
+CURRENT PROPOSAL:
+"""
+${currentProposal}
+"""
+
+USER'S REQUEST:
+"""
+${userRequest}
+"""
+
+INSTRUCTIONS:
+1. Carefully read the user's request
+2. Modify the proposal accordingly while maintaining its professional quality
+3. Keep the same general structure unless the user asks to change it
+4. Return ONLY the updated proposal text, nothing else
+5. Do NOT add explanations, comments, or meta-text
+6. Maintain the same tone and style unless specifically asked to change it
+
+Generate the updated proposal now:`;
+
+    try {
+        return await callWithRetry(async () => {
+            const model = getModel();
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const updatedProposal = response.text().trim();
+
+            console.log('Proposal edited successfully, new length:', updatedProposal.length);
+            return updatedProposal;
+        });
+    } catch (error) {
+        console.error('Error editing proposal:', error);
+        throw new Error('Failed to edit proposal: ' + error.message);
+    }
+}
+
+/**
  * Main orchestration function that handles the entire proposal generation flow
  * @param {string} jobBrief - The job description
  * @param {Function} onStatusUpdate - Callback for status updates
