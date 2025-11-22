@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import useTelegram from '../hooks/useTelegram';
 import '../components/SettingsPanel.css'; // Reusing styles for now, might need adjustment
 
 const SettingsPage = () => {
+    const navigate = useNavigate();
+    const { isTelegram, showBackButton, hideBackButton, hapticFeedback } = useTelegram();
+
     // Supabase State
     const [categories, setCategories] = useState([]);
     const [proposals, setProposals] = useState([]);
@@ -15,6 +19,22 @@ const SettingsPage = () => {
     const [newCategory, setNewCategory] = useState({ name: '', description: '' });
     const [newProposal, setNewProposal] = useState({ title: '', content: '', category_id: '' });
     const [newPortfolio, setNewPortfolio] = useState({ title: '', link: '', description: '', category_id: '' });
+
+    // Show Telegram back button when on settings page
+    useEffect(() => {
+        if (isTelegram) {
+            showBackButton(() => {
+                hapticFeedback('light');
+                navigate('/');
+            });
+        }
+
+        return () => {
+            if (isTelegram) {
+                hideBackButton();
+            }
+        };
+    }, [isTelegram, showBackButton, hideBackButton, navigate, hapticFeedback]);
 
     // Fetch Data on Mount
     useEffect(() => {

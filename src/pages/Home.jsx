@@ -3,14 +3,18 @@ import { Link } from 'react-router-dom';
 import JobInput from '../components/JobInput';
 import ProposalResult from '../components/ProposalResult';
 import { generateProposal } from '../utils/gemini';
+import useTelegram from '../hooks/useTelegram';
 
 const Home = () => {
     const [jobBrief, setJobBrief] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [generatedProposal, setGeneratedProposal] = useState(null);
     const [statusMessage, setStatusMessage] = useState('');
+    const { isTelegram, hapticFeedback, showPopup } = useTelegram();
 
     const handleGenerate = async () => {
+        if (isTelegram) hapticFeedback('medium');
+
         setIsGenerating(true);
         setGeneratedProposal(null);
         setStatusMessage('Starting AI analysis...');
@@ -31,9 +35,17 @@ const Home = () => {
             };
 
             setGeneratedProposal(formattedProposal);
+            if (isTelegram) hapticFeedback('success');
         } catch (error) {
             console.error("Generation failed", error);
-            setStatusMessage(error.message || "Error generating proposal. Please try again.");
+            const errorMsg = error.message || "Error generating proposal. Please try again.";
+            setStatusMessage(errorMsg);
+
+            if (isTelegram) {
+                hapticFeedback('error');
+                showPopup(errorMsg);
+            }
+
             setTimeout(() => setStatusMessage(''), 5000);
         } finally {
             setIsGenerating(false);
