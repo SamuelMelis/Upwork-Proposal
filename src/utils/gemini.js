@@ -1,12 +1,50 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabase } from '../lib/supabase';
+import { apiKeyManager } from './apiKeyManager';
 
-// Debug: Log API key status
-console.log('Gemini API Key exists:', !!import.meta.env.VITE_GEMINI_API_KEY);
-console.log('Gemini API Key length:', import.meta.env.VITE_GEMINI_API_KEY?.length);
+/**
+ * Get a fresh model instance with the current API key
+ */
+function getModel() {
+    const currentKey = apiKeyManager.getCurrentKey();
+    const genAI = new GoogleGenerativeAI(currentKey);
+    return genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+}
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+/**
+ * Call Gemini API with automatic retry and key rotation on quota errors
+ * @param {Function} apiCall - The API call function to execute
+ * @param {number} maxRetries - Maximum number of retries (defaults to total keys available)
+ */
+async function callWithRetry(apiCall, maxRetries = null) {
+    const totalKeys = apiKeyManager.getTotalKeys();
+    const attempts = maxRetries || totalKeys;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+            return await apiCall();
+        } catch (error) {
+            const isLastAttempt = attempt === attempts - 1;
+            const isQuotaError = apiKeyManager.isQuotaError(error);
+
+            if (isQuotaError && !isLastAttempt) {
+                console.warn(`⚠️ Quota error detected on attempt ${attempt + 1}:`, error.message);
+                const rotated = apiKeyManager.rotateToNextKey();
+
+                if (rotated) {
+                    console.log(`🔄 Retrying with next API key (attempt ${attempt + 2}/${attempts})...`);
+                    continue; // Try again with new key
+                } else {
+                    console.error('❌ No more API keys available for rotation');
+                    throw error;
+                }
+            } else {
+                // Non-quota error or last attempt - throw immediately
+                throw error;
+            }
+        }
+    }
+}
 
 /**
  * Identifies the best matching category for a job brief
@@ -37,15 +75,18 @@ ${categoryList}
 Analyze the job brief and return ONLY the ID of the most relevant category. Return just the ID number, nothing else.`;
 
     try {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const categoryId = response.text().trim();
+        return await callWithRetry(async () => {
+            const model = getModel();
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const categoryId = response.text().trim();
 
-        console.log('Identified category ID:', categoryId);
-        return categoryId;
+            console.log('Identified category ID:', categoryId);
+            return categoryId;
+        });
     } catch (error) {
         console.error('Error identifying category:', error);
-        throw new Error('Failed to identify job category');
+        throw new Error('Failed to identify job category: ' + error.message);
     }
 }
 
@@ -117,12 +158,15 @@ Generate the cover letter now:`;
 
     try {
         console.log('Calling Gemini API to generate cover letter...');
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const coverLetter = response.text().trim();
+        return await callWithRetry(async () => {
+            const model = getModel();
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const coverLetter = response.text().trim();
 
-        console.log('Generated cover letter successfully, length:', coverLetter.length);
-        return coverLetter;
+            console.log('Generated cover letter successfully, length:', coverLetter.length);
+            return coverLetter;
+        });
     } catch (error) {
         console.error('Error generating cover letter:', error);
         console.error('Error details:', error.message, error.stack);
