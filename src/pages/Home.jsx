@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import JobInput from '../components/JobInput';
 import ProposalResult from '../components/ProposalResult';
+import SavedProposalsPanel from '../components/SavedProposalsPanel';
 import { generateProposal } from '../utils/gemini';
 import useTelegram from '../hooks/useTelegram';
 
@@ -27,11 +28,7 @@ const Home = () => {
             // Format the result for display
             const formattedProposal = {
                 text: result.coverLetter,
-                metadata: {
-                    category: result.category,
-                    proposalsUsed: result.proposalsUsed,
-                    portfolioUsed: result.portfolioUsed
-                }
+                portfolioUsed: result.portfolioUsed
             };
 
             setGeneratedProposal(formattedProposal);
@@ -69,6 +66,9 @@ const Home = () => {
                     Craft winning cover letters in seconds with AI.
                 </p>
 
+                {/* Saved Proposals Panel */}
+                <SavedProposalsPanel />
+
                 {/* Settings Link */}
                 <Link to="/settings" className="settings-link" style={{
                     position: 'absolute',
@@ -98,10 +98,13 @@ const Home = () => {
                         color: 'var(--accent-color)'
                     }}>
                         <p>{statusMessage}</p>
+                        <div className="loading-spinner"></div>
                     </div>
                 )}
 
-                <ProposalResult proposal={generatedProposal} />
+                {generatedProposal && (
+                    <ProposalResult proposal={generatedProposal} />
+                )}
             </main>
         </div>
     );
