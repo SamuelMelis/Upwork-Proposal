@@ -217,31 +217,6 @@
     width: 100vw;
     height: 100vh;
     background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    z-index: 99;
-    animation: fadeIn 0.3s ease-out;
-}
-
-@media (max-width: 600px) {
-    .settings-panel {
-        width: 100%;
-        top: 0;
-        bottom: 0;
-        right: 0;
-        height: 100vh;
-        border-radius: 0;
-        transform: translateX(100%);
-    }
-
-    .settings-panel.open {
-        transform: translateX(0);
-    }
-}
-
-.category-badge {
-    display: inline-block;
-    background: rgba(56, 189, 248, 0.1);
-    color: var(--accent-color);
     font-size: 0.75rem;
     padding: 0.2rem 0.5rem;
     border-radius: 4px;
