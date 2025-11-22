@@ -10,6 +10,7 @@ const SettingsPanel = () => {
   const [categories, setCategories] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [portfolio, setPortfolio] = useState([]);
+  const [personalContext, setPersonalContext] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -17,6 +18,7 @@ const SettingsPanel = () => {
   const [newCategory, setNewCategory] = useState({ name: '', description: '' });
   const [newProposal, setNewProposal] = useState({ title: '', content: '', category_id: '' });
   const [newPortfolio, setNewPortfolio] = useState({ title: '', link: '', description: '', category_id: '' });
+  const [contextContent, setContextContent] = useState('');
 
   // Fetch Data
   useEffect(() => {
@@ -39,10 +41,18 @@ const SettingsPanel = () => {
       const { data: ports, error: portError } = await supabase.from('portfolio_items').select('*').order('created_at', { ascending: true });
       if (portError) throw portError;
 
+      const { data: context, error: contextError } = await supabase.from('personal_context').select('*').limit(1).single();
+      // Don't throw error if no context exists yet
+      if (contextError && contextError.code !== 'PGRST116') {
+        console.warn('Error fetching context:', contextError);
+      }
+
       setCategories(cats || []);
       setProposals(props || []);
       setPortfolio(ports || []);
-      console.log("Data fetched successfully:", { cats, props, ports });
+      setPersonalContext(context || null);
+      setContextContent(context?.content || '');
+      console.log("Data fetched successfully:", { cats, props, ports, context });
     } catch (err) {
       console.error('Error fetching data:', err);
       setError(err.message);
@@ -169,6 +179,45 @@ const SettingsPanel = () => {
     return cat ? cat.name : 'Unknown Category';
   };
 
+  const saveContext = async () => {
+    if (!contextContent.trim()) {
+      alert('Please enter some context about yourself.');
+      return;
+    }
+
+    try {
+      if (personalContext) {
+        // Update existing context
+        const { data, error } = await supabase
+          .from('personal_context')
+          .update({ content: contextContent, updated_at: new Date().toISOString() })
+          .eq('id', personalContext.id)
+          .select();
+
+        if (error) throw error;
+        if (data) {
+          setPersonalContext(data[0]);
+          alert('Context updated successfully!');
+        }
+      } else {
+        // Insert new context
+        const { data, error } = await supabase
+          .from('personal_context')
+          .insert([{ content: contextContent }])
+          .select();
+
+        if (error) throw error;
+        if (data) {
+          setPersonalContext(data[0]);
+          alert('Context saved successfully!');
+        }
+      }
+    } catch (err) {
+      console.error('Error saving context:', err);
+      alert('Error saving context: ' + err.message);
+    }
+  };
+
   return (
     <>
       <button
@@ -191,6 +240,26 @@ const SettingsPanel = () => {
         <div className="settings-content">
           {loading && <p className="loading-text">Loading data from Supabase...</p>}
           {error && <p className="error-text" style={{ color: '#ef4444' }}>Error: {error}</p>}
+
+          {/* Personal Context Section */}
+          <div className="settings-section">
+            <h3>Personal Context</h3>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              Add information about yourself, your skills, experience, and background. The AI will use this to personalize your proposals.
+            </p>
+            <div className="add-form column">
+              <textarea
+                placeholder="Example: I'm a professional video editor with 5+ years of experience in motion graphics, VSL creation, and social media content. I specialize in Adobe After Effects and Premiere Pro. I've worked with 100+ clients on Upwork with a 98% success rate..."
+                value={contextContent}
+                onChange={(e) => setContextContent(e.target.value)}
+                className="settings-input textarea-large"
+                rows={8}
+              />
+              <button className="btn-small" onClick={saveContext} disabled={loading}>
+                {personalContext ? 'Update Context' : 'Save Context'}
+              </button>
+            </div>
+          </div>
 
           {/* Categories Section */}
           <div className="settings-section">

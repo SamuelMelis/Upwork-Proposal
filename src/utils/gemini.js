@@ -95,11 +95,13 @@ Analyze the job brief and return ONLY the ID of the most relevant category. Retu
  * @param {string} jobBrief - The job description
  * @param {Array} winningProposals - Array of winning proposal objects
  * @param {Array} portfolioItems - Array of portfolio item objects
+ * @param {string} personalContext - Personal/professional context about the user
  * @returns {Promise<string>} - The generated cover letter
  */
-export async function generateCoverLetter(jobBrief, winningProposals, portfolioItems) {
+export async function generateCoverLetter(jobBrief, winningProposals, portfolioItems, personalContext = null) {
     const hasProposals = winningProposals && winningProposals.length > 0;
     const hasPortfolio = portfolioItems && portfolioItems.length > 0;
+    const hasContext = personalContext && personalContext.trim() !== '';
 
     const proposalExamples = hasProposals
         ? winningProposals.map(p => `Title: ${p.title}\nContent: ${p.content}`).join('\n\n')
@@ -119,14 +121,20 @@ JOB BRIEF:
 """
 ${jobBrief}
 """
-
+${hasContext ? `
+ABOUT THE FREELANCER:
+"""
+${personalContext}
+"""
+` : ''}
 INSTRUCTIONS:
 1. Write a professional, engaging cover letter that directly addresses the job requirements
 2. Keep it concise (150-250 words)
 3. Focus on value proposition and relevant experience
-4. Do NOT use placeholder text or generic statements
-5. Make it feel personal and tailored to this specific job
-6. Highlight relevant skills and expertise based on the job description
+${hasContext ? '4. Use the freelancer context to personalize the proposal and highlight relevant skills/experience' : '4. Highlight relevant skills based on the job description'}
+5. Do NOT use placeholder text or generic statements
+6. Make it feel personal and tailored to this specific job
+7. Write in first person as the freelancer applying for the job
 
 Generate the cover letter now:`;
     } else {
@@ -137,7 +145,12 @@ JOB BRIEF:
 """
 ${jobBrief}
 """
-
+${hasContext ? `
+ABOUT THE FREELANCER:
+"""
+${personalContext}
+"""
+` : ''}
 WINNING PROPOSAL EXAMPLES (use these as style/tone reference):
 ${proposalExamples}
 
@@ -150,8 +163,10 @@ INSTRUCTIONS:
 3. ${hasPortfolio ? 'Naturally incorporate 1-2 relevant portfolio links where appropriate' : 'Focus on relevant skills and experience'}
 4. Keep it concise (150-250 words)
 5. Focus on value proposition and relevant experience
-6. Do NOT use placeholder text or generic statements
-7. Make it feel personal and tailored to this specific job
+${hasContext ? '6. Use the freelancer context to personalize the proposal and highlight the most relevant skills/experience for this specific job' : '6. Highlight relevant skills based on available information'}
+7. Do NOT use placeholder text or generic statements
+8. Make it feel personal and tailored to this specific job
+9. Write in first person as the freelancer applying for the job
 
 Generate the cover letter now:`;
     }
@@ -185,7 +200,20 @@ export async function generateProposal(jobBrief, onStatusUpdate) {
         console.log('=== Starting proposal generation ===');
         console.log('Job brief length:', jobBrief?.length);
 
-        // Step 1: Fetch categories
+        // Step 1: Fetch personal context
+        onStatusUpdate?.('Loading your profile...');
+        const { data: contextData, error: contextError } = await supabase
+            .from('personal_context')
+            .select('*')
+            .limit(1)
+            .single();
+
+        const personalContext = contextData?.content || null;
+        if (contextError && contextError.code !== 'PGRST116') {
+            console.warn('Error fetching personal context:', contextError);
+        }
+
+        // Step 2: Fetch categories
         onStatusUpdate?.('Analyzing job brief...');
         const { data: categories, error: catError } = await supabase
             .from('categories')
@@ -201,7 +229,7 @@ export async function generateProposal(jobBrief, onStatusUpdate) {
             console.warn('No categories found. Generating proposal without categorization.');
             onStatusUpdate?.('Generating your cover letter...');
 
-            const coverLetter = await generateCoverLetter(jobBrief, [], []);
+            const coverLetter = await generateCoverLetter(jobBrief, [], [], personalContext);
 
             return {
                 coverLetter,
@@ -246,7 +274,7 @@ export async function generateProposal(jobBrief, onStatusUpdate) {
                 .eq('category_id', fallbackCategory.id);
 
             onStatusUpdate?.('Generating your cover letter...');
-            const coverLetter = await generateCoverLetter(jobBrief, proposals || [], portfolio || []);
+            const coverLetter = await generateCoverLetter(jobBrief, proposals || [], portfolio || [], personalContext);
 
             return {
                 coverLetter,
@@ -280,7 +308,7 @@ export async function generateProposal(jobBrief, onStatusUpdate) {
 
         // Step 4: Generate cover letter (even if proposals/portfolio are empty)
         onStatusUpdate?.('Generating your cover letter...');
-        const coverLetter = await generateCoverLetter(jobBrief, proposals || [], portfolio || []);
+        const coverLetter = await generateCoverLetter(jobBrief, proposals || [], portfolio || [], personalContext);
 
         console.log('=== Proposal generation complete ===');
         return {
@@ -297,7 +325,7 @@ export async function generateProposal(jobBrief, onStatusUpdate) {
         // Last resort: generate a basic proposal without any data
         try {
             onStatusUpdate?.('Generating basic cover letter...');
-            const coverLetter = await generateCoverLetter(jobBrief, [], []);
+            const coverLetter = await generateCoverLetter(jobBrief, [], [], null);
             return {
                 coverLetter,
                 category: 'General',

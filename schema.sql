@@ -28,16 +28,26 @@ create table portfolio_items (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- 4. Personal Context Table (NEW)
+create table personal_context (
+  id uuid primary key default uuid_generate_v4(),
+  content text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
 -- Enable Row Level Security (RLS)
 alter table categories enable row level security;
 alter table proposals enable row level security;
 alter table portfolio_items enable row level security;
+alter table personal_context enable row level security;
 
 -- Create policies to allow public read access (since this is a personal tool for now)
 -- You can restrict this later if needed
 create policy "Allow public read access" on categories for select using (true);
 create policy "Allow public read access" on proposals for select using (true);
 create policy "Allow public read access" on portfolio_items for select using (true);
+create policy "Allow public read access" on personal_context for select using (true);
 
 -- Create policies to allow public insert/update/delete (for the admin/settings panel)
 -- WARNING: In a production app with users, you would restrict this to authenticated users only.
@@ -52,3 +62,7 @@ create policy "Allow public delete" on proposals for delete using (true);
 create policy "Allow public insert" on portfolio_items for insert with check (true);
 create policy "Allow public update" on portfolio_items for update using (true);
 create policy "Allow public delete" on portfolio_items for delete using (true);
+
+create policy "Allow public insert" on personal_context for insert with check (true);
+create policy "Allow public update" on personal_context for update using (true);
+create policy "Allow public delete" on personal_context for delete using (true);
